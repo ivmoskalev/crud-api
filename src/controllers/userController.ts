@@ -24,14 +24,14 @@ const getRequestBody = (req: IncomingMessage): Promise<User> => {
   });
 };
 
-export const getUsers = (req: IncomingMessage, res: ServerResponse) => {
+export const getUsers = (_req: IncomingMessage, res: ServerResponse) => {
   res.statusCode = 200;
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(users));
 };
 
 export const getUser = (
-  req: IncomingMessage,
+  _req: IncomingMessage,
   res: ServerResponse,
   userId: string,
 ) => {
@@ -152,7 +152,7 @@ export const updateUser = async (
 };
 
 export const deleteUser = (
-  req: IncomingMessage,
+  _req: IncomingMessage,
   res: ServerResponse,
   userId: string,
 ) => {
