@@ -3,8 +3,8 @@ import {
   getUser,
   getUsers,
   createUser,
-  // updateUser,
-  // deleteUser,
+  updateUser,
+  deleteUser,
 } from '../controllers/userController';
 
 export const userRoutes = async (req: IncomingMessage, res: ServerResponse) => {
@@ -19,10 +19,10 @@ export const userRoutes = async (req: IncomingMessage, res: ServerResponse) => {
     getUser(req, res, userId);
   } else if (method === 'POST' && url === '/api/users') {
     createUser(req, res);
-  // } else if (method === 'PUT' && userId) {
-  //   updateUser(req, res, userId);
-  // } else if (method === 'DELETE' && userId) {
-  //   deleteUser(req, res, userid);
+  } else if (method === 'PUT' && userId) {
+    updateUser(req, res, userId);
+  } else if (method === 'DELETE' && userId) {
+    deleteUser(req, res, userId);
   } else {
     res.statusCode = 404;
     res.setHeader('Content-Type', 'application/json');
