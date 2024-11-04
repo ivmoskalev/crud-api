@@ -1,19 +1,8 @@
-import { createServer } from 'http';
-import { router } from './app';
+import { startWorker } from './worker';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-const PORT = process.env.PORT || 4000;
+const PORT: number = parseInt(process.env.PORT || '4000', 10);
 
-const server = createServer((req, res) =>{
-  router(req, res);
-});
-
-server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
-
-server.on('error', (err) => {
-  console.error('Server error', err);
-});
+startWorker(PORT);
