@@ -1,94 +1,73 @@
 import { IncomingMessage, ServerResponse } from 'http';
-import users from '../database/inMemoryDatabase';
-import { User, createUserModel } from '../models/user';
+import { dbClient } from '../database/dbClient';
+import { User } from '../models/user';
 import { validate as isUuid } from 'uuid';
 
-const getRequestBody = (req: IncomingMessage): Promise<User> => {
-  return new Promise((resolve, reject) => {
-    try {
-      let body = '';
-      req.on('data', (chunk) => {
-        body += chunk.toString();
-      });
-      req.on('end', () => {
-        try {
-          const parsedBody = JSON.parse(body);
-          resolve(parsedBody);
-        } catch (error) {
-          reject(new Error('Invalid JSON'));
-        }
-      });
-    } catch (error) {
-      reject(error);
-    }
-  });
+const getRequestBody = async (req: IncomingMessage): Promise<any> => {
+  const chunks = [];
+  for await (const chunk of req) {
+    chunks.push(chunk);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString());
+  } catch {
+    return null;
+  }
 };
 
-export const getUsers = (_req: IncomingMessage, res: ServerResponse) => {
-  res.statusCode = 200;
-  res.setHeader('Content-Type', 'application/json');
+export const getUsers = async (_req: IncomingMessage, res: ServerResponse) => {
+  const users = await dbClient.getAll();
+  res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(users));
 };
 
-export const getUser = (
+export const getUser = async (
   _req: IncomingMessage,
   res: ServerResponse,
   userId: string,
 ) => {
   if (!isUuid(userId)) {
-    res.statusCode = 400;
-    res.setHeader('Content-Type', 'application/json');
+    res.writeHead(400, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ message: 'Invalid user ID' }));
     return;
   }
 
-  const user = users.find((u) => u.id === userId);
+  const user = await dbClient.getById(userId);
 
   if (!user) {
-    res.statusCode = 404;
-    res.setHeader('Content-Type', 'application/json');
+    res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ message: 'User not found' }));
     return;
   }
 
-  res.statusCode = 200;
-  res.setHeader('Content-Type', 'application/json');
+  res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(user));
 };
 
 export const createUser = async (req: IncomingMessage, res: ServerResponse) => {
-  try {
-    const body = await getRequestBody(req);
+  const body = await getRequestBody(req);
 
-    const { username, age, hobbies } = body;
-
-    // Validate required fields
-    if (
-      typeof username !== 'string' ||
-      typeof age !== 'number' ||
-      !Array.isArray(hobbies)
-    ) {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(
-        JSON.stringify({
-          message: 'Invalid user data. Check required fields.',
-        }),
-      );
-      return;
-    }
-
-    const newUser = createUserModel(username, age, hobbies);
-    users.push(newUser);
-
-    res.statusCode = 201;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify(newUser));
-  } catch (error) {
-    res.statusCode = 400;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ message: 'Invalid request body' }));
+  if (!body) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: 'Invalid JSON in request body' }));
+    return;
   }
+
+  const { username, age, hobbies } = body;
+
+  if (
+    typeof username !== 'string' ||
+    typeof age !== 'number' ||
+    !Array.isArray(hobbies)
+  ) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: 'Missing or invalid required fields' }));
+    return;
+  }
+
+  const newUser = await dbClient.create({ username, age, hobbies });
+  res.writeHead(201, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(newUser));
 };
 
 export const updateUser = async (
@@ -97,83 +76,47 @@ export const updateUser = async (
   userId: string,
 ) => {
   if (!isUuid(userId)) {
-    res.statusCode = 400;
-    res.setHeader('Content-Type', 'application/json');
+    res.writeHead(400, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ message: 'Invalid user ID' }));
     return;
   }
 
-  const userIndex = users.findIndex((u) => u.id === userId);
-
-  if (userIndex === -1) {
-    res.statusCode = 404;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ message: 'User not found' }));
+  const body = await getRequestBody(req);
+  if (!body) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: 'Invalid JSON in request body' }));
     return;
   }
 
+  const { username, age, hobbies } = body;
+  
   try {
-    const body = await getRequestBody(req);
-    const { username, age, hobbies } = body;
-
-    // Validate required fields
-    if (
-      typeof username !== 'string' ||
-      typeof age !== 'number' ||
-      !Array.isArray(hobbies)
-    ) {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(
-        JSON.stringify({
-          message: 'Invalid user data. Check required fields.',
-        }),
-      );
-      return;
-    }
-
-    const updatedUser: User = {
-      id: userId,
-      username,
-      age,
-      hobbies,
-    };
-
-    users[userIndex] = updatedUser;
-
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'application/json');
+    const updatedUser = await dbClient.update(userId, { username, age, hobbies });
+    res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(updatedUser));
   } catch (error) {
-    res.statusCode = 400;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ message: 'Invalid request body' }));
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: 'User not found' }));
   }
 };
 
-export const deleteUser = (
+export const deleteUser = async (
   _req: IncomingMessage,
   res: ServerResponse,
   userId: string,
 ) => {
   if (!isUuid(userId)) {
-    res.statusCode = 400;
-    res.setHeader('Content-Type', 'application/json');
+    res.writeHead(400, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ message: 'Invalid user ID' }));
     return;
   }
 
-  const userIndex = users.findIndex((u) => u.id === userId);
-
-  if (userIndex === -1) {
-    res.statusCode = 404;
-    res.setHeader('Content-Type', 'application/json');
+  try {
+    await dbClient.delete(userId);
+    res.writeHead(204);
+    res.end();
+  } catch (error) {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ message: 'User not found' }));
-    return;
   }
-
-  users.splice(userIndex, 1);
-
-  res.statusCode = 204;
-  res.end();
 };
