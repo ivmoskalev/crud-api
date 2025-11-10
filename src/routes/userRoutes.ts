@@ -6,26 +6,42 @@ import {
   updateUser,
   deleteUser,
 } from '../controllers/userController';
+import { NotFoundError } from '../errors';
+
+type RouteHandler = (
+  req: IncomingMessage,
+  res: ServerResponse,
+  ...args: string[]
+) => Promise<void>;
+
+interface Route {
+  method: string;
+  path: RegExp;
+  handler: RouteHandler;
+}
+
+const routes: Route[] = [
+  { method: 'GET', path: /^\/api\/users\/?$/, handler: getUsers },
+  { method: 'GET', path: /^\/api\/users\/([^\/]+)\/?$/, handler: getUser },
+  { method: 'POST', path: /^\/api\/users\/?$/, handler: createUser },
+  { method: 'PUT', path: /^\/api\/users\/([^\/]+)\/?$/, handler: updateUser },
+  { method: 'DELETE', path: /^\/api\/users\/([^\/]+)\/?$/, handler: deleteUser },
+];
 
 export const userRoutes = async (req: IncomingMessage, res: ServerResponse) => {
   const { method, url } = req;
-  const urlPattern = /^\/api\/users(\/([0-9a-fA-F\-]+))?$/;
-  const match = url?.match(urlPattern);
-  const userId = match && match[2];
 
-  if (method === 'GET' && url === '/api/users') {
-    getUsers(req, res);
-  } else if (method === 'GET' && userId) {
-    getUser(req, res, userId);
-  } else if (method === 'POST' && url === '/api/users') {
-    createUser(req, res);
-  } else if (method === 'PUT' && userId) {
-    updateUser(req, res, userId);
-  } else if (method === 'DELETE' && userId) {
-    deleteUser(req, res, userId);
-  } else {
-    res.statusCode = 404;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ message: 'Route Not Found' }));
+  for (const route of routes) {
+    if (method === route.method) {
+      const match = url?.match(route.path);
+      if (match) {
+        const params = match.slice(1); 
+        await route.handler(req, res, ...params);
+        return;
+      }
+    }
   }
+
+  throw new NotFoundError('Route Not Found');
 };
+

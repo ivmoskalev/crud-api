@@ -18,19 +18,15 @@ if (cluster.isPrimary) {
   console.log(`Primary ${process.pid} is running on port ${PORT}`);
 
   const workerPorts: number[] = [];
-  
-  // Fork workers.
-  for (let i = 1; i <= numCPUs; i++) {
-    const workerPort = PORT + i;
-    const workerEnv = { WORKER_PORT: workerPort.toString() };
-    const worker = cluster.fork(workerEnv);
-    workerPorts.push(workerPort);
+  const workerIdToPort = new Map<number, number>();
 
-    // Listen for messages from this specific worker.
+  const createWorker = (port: number) => {
+    const workerEnv = { WORKER_PORT: port.toString() };
+    const worker = cluster.fork(workerEnv);
+    workerIdToPort.set(worker.id, port);
+
     worker.on('message', (msg: { type: string, requestId: string, payload?: any }) => {
       let response: { data?: any; error?: string } = {};
-
-      // Process database commands from workers
       switch (msg.type) {
         case 'user:getAll':
           response.data = users;
@@ -64,13 +60,26 @@ if (cluster.isPrimary) {
         default:
           response.error = 'Unknown command';
       }
-
-      // Send the result back to the worker that requested it.
       worker.send({ requestId: msg.requestId, ...response });
     });
+  };
+
+  for (let i = 1; i <= numCPUs; i++) {
+    const workerPort = PORT + i;
+    workerPorts.push(workerPort);
+    createWorker(workerPort);
   }
 
-  // Round-robin index for the load balancer
+  cluster.on('exit', (worker: Worker, code: number, signal: string) => {
+    console.error(`Worker ${worker.process.pid} died with code: ${code}, and signal: ${signal}`);
+    console.log('Starting a new worker...');
+    const workerPort = workerIdToPort.get(worker.id);
+    if (workerPort) {
+      workerIdToPort.delete(worker.id);
+      createWorker(workerPort);
+    }
+  });
+
   let currentWorkerIndex = 0;
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -104,7 +113,6 @@ if (cluster.isPrimary) {
   });
 
 } else {
-  // Worker processes start here.
   const WORKER_PORT: number = parseInt(process.env.WORKER_PORT || '0', 10);
   import('./worker').then(({ startWorker }) => {
     startWorker(WORKER_PORT);
